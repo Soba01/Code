@@ -1,0 +1,75 @@
+import logging
+from asyncore import dispatcher
+
+import up as Up
+from flask import Flask, request
+from telebot.types import Update
+from player import Player
+from db_manager import DBManager
+
+# создание экземпляра класса DBManager
+db_manager = DBManager()
+
+# настройка webhook для бота в Telegram
+app = Flask(__name__)
+
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    update = Update.de_json(request.get_json(force=True))
+    dispatcher.process_update(Update.from_dict(update.to_dict()))
+    return "ok"
+
+
+# функция для обработки команды /start
+def start(update, context):
+    player_id = update.message.chat_id
+    player = Player(player_id)
+    db_manager.add_player(player)
+    context.bot.send_message(chat_id=player_id, text="Добро пожаловать в игру Шахтер!")
+
+
+# функция для обработки команды /balance
+def balance(update, context):
+    player_id = update.message.chat_id
+    player = db_manager.get_player(player_id)
+    balance = player.balance
+    context.bot.send_message(chat_id=player_id, text=f"Ваш текущий баланс: {balance} долларов")
+
+
+# функция для добычи золота
+def mine_gold(update, context):
+    player_id = update.message.chat_id
+    player = db_manager.get_player(player_id)
+    gold_per_level = 10
+    player.gold += gold_per_level * player.level
+    db_manager.update_player(player)
+
+
+# функция для продажи золота
+def sell_gold(update, context):
+    player_id = update.message.chat_id
+    player = db_manager.get_player(player_id)
+    price = 10
+    player.balance += price * player.gold
+    player.gold = 0
+    db_manager.update_player(player)
+
+
+# функция для улучшения уровня шахты
+def upgrade_mine(update, context):
+    player_id = update.message.chat_id
+    player = db_manager.get_player(player_id)
+    upgrade_cost = 100
+    if player.balance >= upgrade_cost:
+        player.balance -= upgrade_cost
+        player.level += 1
+        db_manager.update_player(player)
+        context.bot.send_message(chat_id=player_id, text="Уровень шахты улучшен!")
+    else:
+        context.bot.send_message(chat_id=player_id, text="Недостаточно денег для улучшения шахты")
+
+
+# создание экземпляра класса Updater
+updater = Up
+
